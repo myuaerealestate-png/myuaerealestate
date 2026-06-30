@@ -572,6 +572,8 @@
                     <button data-filter="rent" class="filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Rent</button>
                     <button data-filter="clubs" class="filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Clubs</button>
                     <button data-filter="spa" class="filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Spa</button>
+                    <button data-filter="plot" class="filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Plots</button>
+                    <button data-filter="shops" class="filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Shops</button>
                 </div>
 
                 <!-- Dynamic Properties Grid -->
@@ -819,6 +821,8 @@
                         <li><a href="#" class="hover:text-primary transition-colors">Rent</a></li>
                         <li><a href="#" class="hover:text-primary transition-colors">Clubs</a></li>
                         <li><a href="#" class="hover:text-primary transition-colors">Spa</a></li>
+                        <li><a href="#" class="hover:text-primary transition-colors">Plots</a></li>
+                        <li><a href="#" class="hover:text-primary transition-colors">Shops</a></li>
                     </ul>
                 </div>
 
@@ -950,6 +954,8 @@
                     <button data-modal-filter="rent" class="modal-filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Rent</button>
                     <button data-modal-filter="clubs" class="modal-filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Clubs</button>
                     <button data-modal-filter="spa" class="modal-filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Spa</button>
+                    <button data-modal-filter="plot" class="modal-filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Plots</button>
+                    <button data-modal-filter="shops" class="modal-filter-btn bg-white text-[#444] px-5 md:px-6 py-2 rounded-full text-[12px] md:text-[13px] font-bold shadow-sm transition-colors hover:bg-gray-50">Shops</button>
                 </div>
 
                 <!-- Dynamic Grids for Modals -->
@@ -1006,6 +1012,8 @@
                                 <li><a href="#" class="hover:text-primary transition-colors">Rent</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Clubs</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Spa</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Plots</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Shops</a></li>
                             </ul>
                         </div>
 
@@ -1267,6 +1275,8 @@
                                 <li><a href="#" class="hover:text-primary transition-colors">Rent</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Clubs</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Spa</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Plots</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Shops</a></li>
                             </ul>
                         </div>
 
@@ -1482,6 +1492,8 @@
                                 <li><a href="#" class="hover:text-primary transition-colors">Rent</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Clubs</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Spa</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Plots</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Shops</a></li>
                             </ul>
                         </div>
 
@@ -1641,6 +1653,8 @@
                                 <li><a href="#" class="hover:text-primary transition-colors">Rent</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Clubs</a></li>
                                 <li><a href="#" class="hover:text-primary transition-colors">Spa</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Plots</a></li>
+                                <li><a href="#" class="hover:text-primary transition-colors">Shops</a></li>
                             </ul>
                         </div>
 
@@ -1720,6 +1734,56 @@
 
         let allProperties = [];
         let allNews = [];
+
+        // --- SUPERFAST API ENGINE WITH AUTO-RETRY ---
+        async function fetchWithRetry(url, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.message || data.error);
+                    return data;
+                } catch (err) {
+                    if (i === retries - 1) throw err;
+                    await new Promise(res => setTimeout(res, 500 * (i + 1))); // Wait and retry
+                }
+            }
+        }
+
+        // --- INSTANT PRE-FETCHING ---
+        // Fires requests immediately while the browser parses HTML!
+        const preloadedData = {
+            properties: fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}`),
+            news: fetchWithRetry(`${API_URLS.NEWS}?apiKey=${API_KEYS.NEWS}`),
+            locations: fetchWithRetry(`${API_URLS.LOCATIONS}?apiKey=${API_KEYS.LOCATIONS}`),
+            reviews: fetchWithRetry(`${API_URLS.REVIEWS}?apiKey=${API_KEYS.REVIEWS}`),
+            agents: fetchWithRetry(API_URLS.AGENTS)
+        };
+
+        // --- ULTIMATE IMAGE OPTIMIZER TO FIX BLURRY IMAGES ---
+        function optimizeImageUrl(url) {
+            if (!url) return '';
+            let cleanUrl = String(url).trim();
+            
+            // Remove Blogger/Googleusercontent quality downgrades like =s320, -w400, etc.
+            if (cleanUrl.includes('googleusercontent.com') || cleanUrl.includes('blogger.googleusercontent.com')) {
+                cleanUrl = cleanUrl.replace(/=[swh]\d+(-[swh]\d+)*(-[cp])?/, '=s0'); // =s0 forces original size
+                cleanUrl = cleanUrl.replace(/\/[swh]\d+(-[swh]\d+)*(-[cp])?\//, '/s0/');
+            }
+            
+            // Bypass Google Drive Thumbnail compression completely
+            if (cleanUrl.includes('drive.google.com') || cleanUrl.includes('docs.google.com/uc')) {
+                const idMatch = cleanUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || cleanUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                if (idMatch && idMatch[1]) {
+                    return `https://lh3.googleusercontent.com/d/${idMatch[1]}=s0`; 
+                }
+            }
+            if (cleanUrl.includes('dropbox.com')) {
+                return cleanUrl.replace('dl=0', 'raw=1').replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+            }
+            return cleanUrl;
+        }
 
         // --- GOOGLE SHEETS LEAD CAPTURE FORM HANDLING ---
         function setupFormHandling() {
@@ -1865,12 +1929,7 @@
         // --- FETCH PROPERTIES ---
         async function fetchAndRenderProperties() {
             try {
-                const url = new URL(API_URLS.PROPERTIES);
-                url.searchParams.append('apiKey', API_KEYS.PROPERTIES);
-                const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-                let rawData = await response.json();
-                if (rawData.error) throw new Error(rawData.message || rawData.error);
+                let rawData = await preloadedData.properties;
 
                 let data = Array.isArray(rawData) ? rawData : (rawData.data || rawData.properties || []);
                 let normalizedData = data.map(row => {
@@ -1883,7 +1942,13 @@
                     if (!p.title || !p.price) return false;
                     let imgCount = 0; for (let i = 1; i <= 20; i++) if (p[`image_${i}`] && String(p[`image_${i}`]).trim() !== '') imgCount++;
                     return imgCount >= 4;
-                }).map((p, index) => { p._uid = 'prop_' + index; return p; });
+                }).map((p, index) => { 
+                    p._uid = 'prop_' + index; 
+                    for (let i = 1; i <= 20; i++) {
+                        if (p[`image_${i}`]) p[`image_${i}`] = optimizeImageUrl(p[`image_${i}`]);
+                    }
+                    return p; 
+                });
 
                 renderGrids();
             } catch (error) {
@@ -1896,12 +1961,7 @@
         // --- FETCH NEWS ---
         async function fetchAndRenderNews() {
             try {
-                const url = new URL(API_URLS.NEWS);
-                url.searchParams.append('apiKey', API_KEYS.NEWS);
-                const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-                let rawData = await response.json();
-                if (rawData.error) throw new Error(rawData.message || rawData.error);
+                let rawData = await preloadedData.news;
 
                 let data = Array.isArray(rawData) ? rawData : (rawData.data || rawData.news || []);
                 allNews = data.map((n, index) => ({
@@ -1910,7 +1970,7 @@
                     news_title: n.news_title || n['news title'] || n.title || '',
                     short_description: n.short_description || n['short description'] || n.description || '',
                     full_article: n.full_article || n['full article'] || n.article || '',
-                    news_image: n.news_image || n['news image'] || n.image || ''
+                    news_image: optimizeImageUrl(n.news_image || n['news image'] || n.image || '')
                 })).filter(n => n.news_title && n.news_image);
 
                 renderNewsGrids();
@@ -1929,12 +1989,7 @@
             let promoCardHtml = (locContainer && locContainer.lastElementChild && locContainer.lastElementChild.innerHTML.includes('Luxury Penthouses')) ? locContainer.lastElementChild.outerHTML : '';
 
             try {
-                const url = new URL(API_URLS.LOCATIONS);
-                url.searchParams.append('apiKey', API_KEYS.LOCATIONS);
-                const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-                let rawData = await response.json();
-                if (rawData.error) throw new Error(rawData.message || rawData.error);
+                let rawData = await preloadedData.locations;
 
                 let data = Array.isArray(rawData) ? rawData : (rawData.data || []);
                 let validData = data.map(row => {
@@ -1944,7 +1999,7 @@
                 }).map(item => {
                     let type = item.type || item.category || item.section || '';
                     let name = item.name || item.title || item.location_name || item.developer_name || '';
-                    let img = item.image_url || item.image || item.logo || item.thumbnail || '';
+                    let img = optimizeImageUrl(item.image_url || item.image || item.logo || item.thumbnail || '');
                     let overlay = item.overlay_text || item.overlay || item.text || item.subtitle || '';
                     let order = parseInt(item.order || item.position || item.sort) || 999;
                     let status = item.status || item.state || 'active';
@@ -1956,15 +2011,8 @@
 
                 const getImgTag = (url, name, classes, fallbackHtml) => {
                     if (!url) return fallbackHtml;
-                    let driveId = null;
-                    if (url.includes('drive.google.com') || url.includes('docs.google.com/uc')) {
-                        const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-                        if (idMatch && idMatch[1]) driveId = idMatch[1];
-                    }
                     const cleanHtml = fallbackHtml ? fallbackHtml.replace(/"/g, "&quot;").replace(/'/g, "\\'") : '';
                     const fallbackExec = fallbackHtml ? `this.outerHTML='${cleanHtml}';` : `this.src='https://via.placeholder.com/800x600?text=Invalid+Image';`;
-                    if (driveId) return `<img src="https://drive.google.com/uc?export=view&id=${driveId}" alt="${name}" loading="lazy" class="${classes}" onerror="if(!this.dataset.t){this.dataset.t='1';this.src='https://drive.google.com/thumbnail?id=${driveId}&sz=w1000';}else if(this.dataset.t==='1'){this.dataset.t='2';this.src='https://lh3.googleusercontent.com/d/${driveId}=s1000';}else{this.onerror=null;${fallbackExec}}">`;
-                    if (url.includes('dropbox.com')) url = url.replace('dl=0', 'raw=1').replace('www.dropbox.com', 'dl.dropboxusercontent.com');
                     return `<img src="${url}" alt="${name}" loading="lazy" class="${classes}" onerror="this.onerror=null; ${fallbackExec}">`;
                 };
 
@@ -2007,12 +2055,7 @@
             const slider = document.getElementById('reviews-slider');
             const dotsContainer = document.getElementById('reviews-dots');
             try {
-                const url = new URL(API_URLS.REVIEWS);
-                url.searchParams.append('apiKey', API_KEYS.REVIEWS);
-                const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-                let rawDataResponse = await response.json();
-                if (rawDataResponse.error) throw new Error(rawDataResponse.message || rawDataResponse.error);
+                let rawDataResponse = await preloadedData.reviews;
 
                 let rawData = Array.isArray(rawDataResponse) ? rawDataResponse : (rawDataResponse.data || []);
                 let validData = rawData.map(row => {
@@ -2024,7 +2067,7 @@
                         name: item.name || item.customer_name || item.full_name || item.author || '',
                         category: item.category || item.role || item.type || item.subtitle || 'Customer',
                         review: item.review || item.testimonial || item.description || item.text || item.content || '',
-                        image_url: item.image_url || item.image || item.profile_picture || item.photo || item.avatar || ''
+                        image_url: optimizeImageUrl(item.image_url || item.image || item.profile_picture || item.photo || item.avatar || '')
                     };
                 }).filter(item => item.name && item.review);
 
@@ -2068,11 +2111,7 @@
             const slider = document.getElementById('agents-slider');
             const dotsContainer = document.getElementById('agents-dots');
             try {
-                const url = new URL(API_URLS.AGENTS);
-                const response = await fetch(url, { method: 'GET', redirect: 'follow' });
-                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-                let rawDataResponse = await response.json();
-                if (rawDataResponse.error) throw new Error(rawDataResponse.message || rawDataResponse.error);
+                let rawDataResponse = await preloadedData.agents;
 
                 let rawData = Array.isArray(rawDataResponse) ? rawDataResponse : (rawDataResponse.data || []);
                 
@@ -2090,10 +2129,11 @@
                     if (validAgents.length > 0) {
                         slider.innerHTML = validAgents.map(agent => {
                             const safeName = agent.name.replace(/"/g, '&quot;');
+                            const optImgUrl = optimizeImageUrl(agent.image_url);
                             return `
                                 <div class="flex flex-col w-[75vw] sm:w-[280px] lg:w-[320px] flex-shrink-0 snap-center fade-in-up bg-white rounded-[1.5rem] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-[#C9A646] group transition-transform hover:-translate-y-1">
                                     <div class="w-full h-[320px] sm:h-[380px] relative overflow-hidden bg-gray-100">
-                                        <img src="${agent.image_url}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 pointer-events-none" onerror="this.src='https://via.placeholder.com/800x800?text=Image+Unavailable'">
+                                        <img src="${optImgUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 pointer-events-none" onerror="this.src='https://via.placeholder.com/800x800?text=Image+Unavailable'">
                                     </div>
                                     <div class="px-6 py-5 text-left w-full pointer-events-none">
                                         <h3 class="font-sans font-bold text-[20px] md:text-[22px] text-[#0B0B0B] tracking-tight mb-1">${agent.name}</h3>
@@ -2427,13 +2467,13 @@
 
             setTimeout(hideLoader, 6000); // 6 sec ultimate fallback
 
+            // Wait for all pre-fetched promises to resolve
             Promise.all([
                 fetchAndRenderProperties(),
                 fetchAndRenderNews(),
                 fetchLocationsAndDevelopers(),
                 fetchAndRenderReviews(),
-                fetchAndRenderAgents(),
-                new Promise(resolve => setTimeout(resolve, 1500))
+                fetchAndRenderAgents()
             ]).then(() => {
                 // Initialize Sliders after data fetches
                 initDragSlider('trending-slider', 'trending-dots');
