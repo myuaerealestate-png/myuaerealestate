@@ -2232,7 +2232,7 @@
         // ==========================================
         // UI HELPERS & GRID RENDERERS
         // ==========================================
-        function createCardHTML(prop, bgClass) {
+        function createCardHTML(prop, bgClass, forceLazy = false) {
             let images = [];
             for (let i = 1; i <= 20; i++) if (prop[`image_${i}`]) images.push(prop[`image_${i}`].trim());
 
@@ -2245,7 +2245,8 @@
             let locationStr = prop.location || prop.prime_location || 'Dubai, UAE';
             let safeTitle = (prop.title || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             
-            let sliderHtml = images.map((img, i) => `<img src="${img}" alt="${safeTitle}" class="w-full h-full object-cover flex-shrink-0 transition-transform duration-700 group-hover:scale-110 pointer-events-none" ${i > 0 ? 'loading="lazy"' : ''} onerror="this.src='https://via.placeholder.com/800x600?text=Image+Not+Found'">`).join('');
+            // AGGRESSIVE LAZY LOADING: Prevents 10,000+ images from downloading at once and freezing the browser
+            let sliderHtml = images.map((img, i) => `<img src="${img}" alt="${safeTitle}" class="w-full h-full object-cover flex-shrink-0 transition-transform duration-700 group-hover:scale-110 pointer-events-none" ${forceLazy || i > 0 ? 'loading="lazy"' : ''} onerror="this.src='https://via.placeholder.com/800x600?text=Image+Not+Found'">`).join('');
 
             let navBtns = images.length > 1 ? `
                 <button type="button" class="card-slider-prev absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-white/70 hover:bg-white rounded-full flex items-center justify-center text-black opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-sm" onclick="event.preventDefault(); event.stopPropagation(); window.slideCard(this, -1)">
@@ -2322,13 +2323,49 @@
             const trendingProps = allProperties.filter(p => (p.trending || '').toLowerCase() === 'yes');
             const reversedAll = allProperties.slice().reverse();
             
-            document.getElementById('trending-slider').innerHTML = trendingProps.map(p => createCardHTML(p, 'bg-trendingBg')).join('');
-            document.getElementById('trending-dots').innerHTML = trendingProps.map((_, i) => `<div class="rounded-full transition-all duration-300 cursor-pointer ${i === 0 ? 'w-8 h-2.5 bg-primary' : 'w-2.5 h-2.5 bg-[#cbd5e1] hover:bg-[#A8A39D]'}"></div>`).join('');
+            // 1. INSTANT RENDER: Draw the first 12 items instantly
+            const BATCH_SIZE = 12;
             
-            document.getElementById('dream-place-grid').innerHTML = reversedAll.slice(0, 6).map(p => createCardHTML(p, 'bg-dreamBg')).join('');
+            document.getElementById('trending-slider').innerHTML = trendingProps.slice(0, BATCH_SIZE).map(p => createCardHTML(p, 'bg-trendingBg', false)).join('');
+            document.getElementById('trending-dots').innerHTML = trendingProps.slice(0, BATCH_SIZE).map((_, i) => `<div class="rounded-full transition-all duration-300 cursor-pointer ${i === 0 ? 'w-8 h-2.5 bg-primary' : 'w-2.5 h-2.5 bg-[#cbd5e1] hover:bg-[#A8A39D]'}"></div>`).join('');
             
-            document.getElementById('modal-property-grid-trending').innerHTML = trendingProps.map(p => createCardHTML(p, 'bg-beigeBg')).join('');
-            document.getElementById('modal-property-grid-dream').innerHTML = reversedAll.map(p => createCardHTML(p, 'bg-beigeBg')).join('');
+            document.getElementById('dream-place-grid').innerHTML = reversedAll.slice(0, 6).map(p => createCardHTML(p, 'bg-dreamBg', false)).join('');
+            
+            document.getElementById('modal-property-grid-trending').innerHTML = trendingProps.slice(0, BATCH_SIZE).map(p => createCardHTML(p, 'bg-beigeBg', true)).join('');
+            document.getElementById('modal-property-grid-dream').innerHTML = reversedAll.slice(0, BATCH_SIZE).map(p => createCardHTML(p, 'bg-beigeBg', true)).join('');
+
+            // 2. AGGRESSIVE BACKGROUND CHUNKING: Guaranteed to finish fully loading 500+ properties within the 12-second window without freezing the loader spinner
+            let tIdx = BATCH_SIZE;
+            let dIdx = BATCH_SIZE;
+            const CHUNK_AMOUNT = 50; // Process 50 properties at a time rapidly
+            
+            function processNextChunk() {
+                let processedAnything = false;
+                
+                if (tIdx < trendingProps.length) {
+                    const chunk = trendingProps.slice(tIdx, tIdx + CHUNK_AMOUNT);
+                    document.getElementById('trending-slider').insertAdjacentHTML('beforeend', chunk.map(p => createCardHTML(p, 'bg-trendingBg', true)).join(''));
+                    document.getElementById('trending-dots').insertAdjacentHTML('beforeend', chunk.map((_, i) => `<div class="rounded-full transition-all duration-300 cursor-pointer w-2.5 h-2.5 bg-[#cbd5e1] hover:bg-[#A8A39D]"></div>`).join(''));
+                    document.getElementById('modal-property-grid-trending').insertAdjacentHTML('beforeend', chunk.map(p => createCardHTML(p, 'bg-beigeBg', true)).join(''));
+                    tIdx += CHUNK_AMOUNT;
+                    processedAnything = true;
+                }
+
+                if (dIdx < reversedAll.length) {
+                    const chunk = reversedAll.slice(dIdx, dIdx + CHUNK_AMOUNT);
+                    document.getElementById('modal-property-grid-dream').insertAdjacentHTML('beforeend', chunk.map(p => createCardHTML(p, 'bg-beigeBg', true)).join(''));
+                    dIdx += CHUNK_AMOUNT;
+                    processedAnything = true;
+                }
+
+                // Yield to the browser for 40ms to keep the loader spinning smoothly, then process the next 50 properties
+                if (processedAnything) {
+                    setTimeout(processNextChunk, 40);
+                }
+            }
+            
+            // Kick off the chunking loop immediately after the first batch
+            setTimeout(processNextChunk, 100);
         }
 
         function renderNewsGrids() {
@@ -2355,7 +2392,23 @@
             const bgClass = isModal ? 'bg-beigeBg' : 'bg-dreamBg';
             
             if (displayData.length > 0) {
-                gridEl.innerHTML = displayData.map(p => createCardHTML(p, bgClass)).join('');
+                // Batch filtering render to avoid freeze on massive categories
+                const BATCH_SIZE = 20;
+                gridEl.innerHTML = displayData.slice(0, BATCH_SIZE).map(p => createCardHTML(p, bgClass, false)).join('');
+                
+                if (displayData.length > BATCH_SIZE) {
+                    // Aggressive background chunking for filtered properties
+                    let fIdx = BATCH_SIZE;
+                    function processFilterChunk() {
+                        if (fIdx < displayData.length) {
+                            const chunk = displayData.slice(fIdx, fIdx + 50);
+                            gridEl.insertAdjacentHTML('beforeend', chunk.map(p => createCardHTML(p, bgClass, true)).join(''));
+                            fIdx += 50;
+                            setTimeout(processFilterChunk, 40);
+                        }
+                    }
+                    setTimeout(processFilterChunk, 40);
+                }
             } else {
                 gridEl.innerHTML = `<div class="col-span-full w-full text-center py-10 text-gray-500 font-medium">No properties found for this category.</div>`;
             }
@@ -2536,17 +2589,18 @@
                 }
             };
 
-            setTimeout(hideLoader, 6000); // 6 sec ultimate fallback
+            // STRICT 12-SECOND LOADER TIMEOUT
+            // This guarantees the loader stays for exactly 12 seconds while background fetching finishes
+            setTimeout(hideLoader, 12000); 
 
             // --- INSTANT DECOUPLED LOADING ENGINE ---
-            // Render properties immediately when ready and hide loader, 
-            // without waiting for other slower APIs (like News or Agents) to finish.
+            // Render properties as soon as they are ready in the background
             fetchAndRenderProperties().then(() => {
                 initDragSlider('trending-slider', 'trending-dots');
-                hideLoader(); 
+                // hideLoader is removed here to enforce the 12-second rule
             }).catch(err => {
                 console.error("Properties failed to load:", err);
-                hideLoader();
+                // hideLoader is removed here to enforce the 12-second rule
             });
 
             // Load all other sections independently in the background
