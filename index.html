@@ -1937,34 +1937,95 @@
         }
 
         // --- FETCH PROPERTIES ---
+        const CACHE_KEY_PROPERTIES = 'myuae_properties_cache';
+        const CACHE_KEY_TIME = 'myuae_properties_cache_time';
+        const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes cache expiration
+
+        // Helper function to process raw data and render the DOM
+        function processAndRenderProperties(rawData) {
+            let data = Array.isArray(rawData) ? rawData : (rawData.data || rawData.properties || []);
+            let normalizedData = data.map(row => {
+                let newRow = {};
+                for (let key in row) { newRow[key.toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_')] = row[key]; }
+                return newRow;
+            });
+
+            allProperties = normalizedData.filter(p => {
+                if (!p.title || !p.price) return false;
+                let imgCount = 0; for (let i = 1; i <= 20; i++) if (p[`image_${i}`] && String(p[`image_${i}`]).trim() !== '') imgCount++;
+                return imgCount >= 4;
+            }).map((p, index) => { 
+                p._uid = 'prop_' + index; 
+                for (let i = 1; i <= 20; i++) {
+                    if (p[`image_${i}`]) p[`image_${i}`] = optimizeImageUrl(p[`image_${i}`]);
+                }
+                return p; 
+            });
+
+            renderGrids();
+        }
+
         async function fetchAndRenderProperties() {
             try {
-                let rawData = await preloadedData.properties;
+                const cachedDataString = localStorage.getItem(CACHE_KEY_PROPERTIES);
+                const cacheTimestamp = localStorage.getItem(CACHE_KEY_TIME);
+                const now = Date.now();
+                let hasRenderedFromCache = false;
 
-                let data = Array.isArray(rawData) ? rawData : (rawData.data || rawData.properties || []);
-                let normalizedData = data.map(row => {
-                    let newRow = {};
-                    for (let key in row) { newRow[key.toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_')] = row[key]; }
-                    return newRow;
-                });
-
-                allProperties = normalizedData.filter(p => {
-                    if (!p.title || !p.price) return false;
-                    let imgCount = 0; for (let i = 1; i <= 20; i++) if (p[`image_${i}`] && String(p[`image_${i}`]).trim() !== '') imgCount++;
-                    return imgCount >= 4;
-                }).map((p, index) => { 
-                    p._uid = 'prop_' + index; 
-                    for (let i = 1; i <= 20; i++) {
-                        if (p[`image_${i}`]) p[`image_${i}`] = optimizeImageUrl(p[`image_${i}`]);
+                // 1. Returning Visitors: Instantly load and render from localStorage cache
+                if (cachedDataString) {
+                    try {
+                        const cachedData = JSON.parse(cachedDataString);
+                        processAndRenderProperties(cachedData);
+                        hasRenderedFromCache = true;
+                    } catch(e) {
+                        console.error('Cache parsing error:', e);
+                        localStorage.removeItem(CACHE_KEY_PROPERTIES);
+                        localStorage.removeItem(CACHE_KEY_TIME);
                     }
-                    return p; 
-                });
+                }
 
-                renderGrids();
+                // 2. Check if Cache has expired (older than 5 minutes) or doesn't exist
+                const isCacheExpired = !cacheTimestamp || (now - parseInt(cacheTimestamp, 10) > CACHE_EXPIRY_MS);
+
+                if (!hasRenderedFromCache || isCacheExpired) {
+                    // Background Refresh Logic
+                    const fetchPromise = (async () => {
+                        let rawData;
+                        // Use pre-fetched data on initial load if available, otherwise fetch fresh
+                        if (!hasRenderedFromCache && typeof preloadedData !== 'undefined' && preloadedData.properties) {
+                            rawData = await preloadedData.properties;
+                        } else {
+                            rawData = await fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}`);
+                        }
+
+                        const newRawDataString = JSON.stringify(rawData);
+
+                        // 3. Update DOM only if there are changes to avoid unnecessary reflows/repaints
+                        if (!hasRenderedFromCache || newRawDataString !== cachedDataString) {
+                            processAndRenderProperties(rawData);
+                            
+                            // Save the latest JSON and current timestamp to localStorage
+                            localStorage.setItem(CACHE_KEY_PROPERTIES, newRawDataString);
+                            localStorage.setItem(CACHE_KEY_TIME, Date.now().toString());
+                        }
+                    })();
+
+                    // First Visit: Await the fetch so the UI loader clears properly
+                    if (!hasRenderedFromCache) {
+                        await fetchPromise;
+                    } else {
+                        // Returning Visit: Catch silent background fetch errors
+                        fetchPromise.catch(e => console.error("Background property refresh failed:", e));
+                    }
+                }
             } catch (error) {
                 console.error("Properties API Error:", error);
-                document.getElementById('trending-slider').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
-                document.getElementById('dream-place-grid').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
+                // Only show error message if we failed to render even from cache
+                if (!allProperties.length) {
+                    document.getElementById('trending-slider').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
+                    document.getElementById('dream-place-grid').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
+                }
             }
         }
 
@@ -2477,24 +2538,31 @@
 
             setTimeout(hideLoader, 6000); // 6 sec ultimate fallback
 
-            // Wait for all pre-fetched promises to resolve
-            Promise.all([
-                fetchAndRenderProperties(),
-                fetchAndRenderNews(),
-                fetchLocationsAndDevelopers(),
-                fetchAndRenderReviews(),
-                fetchAndRenderAgents()
-            ]).then(() => {
-                // Initialize Sliders after data fetches
+            // --- INSTANT DECOUPLED LOADING ENGINE ---
+            // Render properties immediately when ready and hide loader, 
+            // without waiting for other slower APIs (like News or Agents) to finish.
+            fetchAndRenderProperties().then(() => {
                 initDragSlider('trending-slider', 'trending-dots');
-                initDragSlider('reviews-slider', 'reviews-dots');
-                initDragSlider('agents-slider', 'agents-dots');
-                setupFormHandling(); // Initialize Forms
-                hideLoader();
+                hideLoader(); 
             }).catch(err => {
-                console.error(err);
+                console.error("Properties failed to load:", err);
                 hideLoader();
             });
+
+            // Load all other sections independently in the background
+            fetchAndRenderNews();
+            
+            fetchLocationsAndDevelopers();
+            
+            fetchAndRenderReviews().then(() => {
+                initDragSlider('reviews-slider', 'reviews-dots');
+            }).catch(console.error);
+            
+            fetchAndRenderAgents().then(() => {
+                initDragSlider('agents-slider', 'agents-dots');
+            }).catch(console.error);
+
+            setupFormHandling(); // Initialize Forms
 
             // ==========================================
             // HERO SEARCH BAR LOGIC
@@ -2725,7 +2793,7 @@
                         else heading.textContent = 'Trending Properties';
                     }
 
-                    // Dynamically populate grids to guarantee they are never empty
+                    // Feed Virtualized Chunks
                     if (type === 'dream') {
                         const allBtn = document.querySelector('.modal-filter-btn[data-modal-filter="all"]');
                         if (allBtn) {
@@ -2734,7 +2802,11 @@
                         }
                         applyFilter(dreamGridEl, 'all');
                     } else if (type === 'trending') {
-                        if (trendGrid) trendGrid.innerHTML = allProperties.filter(p => (p.trending || '').toLowerCase() === 'yes').map(p => createCardHTML(p, 'bg-beigeBg')).join('');
+                        if (trendGrid) {
+                            trendGrid.innerHTML = '';
+                            window.propertyChunks.modalTrending.index = 0;
+                            loadMoreProperties('modalTrending');
+                        }
                     } else if (type === 'trends') {
                         if (trendsGrid) trendsGrid.innerHTML = allNews.map(n => createNewsCardHTML(n, 'bg-beigeBg')).join('');
                     }
