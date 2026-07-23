@@ -1749,7 +1749,11 @@
         async function fetchWithRetry(url, retries = 3) {
             for (let i = 0; i < retries; i++) {
                 try {
-                    const response = await fetch(url, { method: 'GET', redirect: 'follow' });
+                    const response = await fetch(url, { 
+                        method: 'GET', 
+                        redirect: 'follow',
+                        cache: 'no-store' // Enforces fresh live data and bypasses browser HTTP cache
+                    });
                     if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
                     const data = await response.json();
                     if (data.error) throw new Error(data.message || data.error);
@@ -1764,7 +1768,7 @@
         // --- INSTANT PRE-FETCHING ---
         // Fires requests immediately while the browser parses HTML!
         const preloadedData = {
-            properties: fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}`),
+            properties: fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}&timestamp=${new Date().getTime()}`),
             news: fetchWithRetry(`${API_URLS.NEWS}?apiKey=${API_KEYS.NEWS}`),
             locations: fetchWithRetry(`${API_URLS.LOCATIONS}?apiKey=${API_KEYS.LOCATIONS}`),
             reviews: fetchWithRetry(`${API_URLS.REVIEWS}?apiKey=${API_KEYS.REVIEWS}`),
@@ -1962,6 +1966,30 @@
         }
 
         async function fetchAndRenderProperties() {
+            // Display Rotating Wheel & Text while properties are loading
+            const propLoaderHtml = `
+                <div class="w-full flex flex-col items-center justify-center py-16 col-span-full min-h-[250px] fade-in-up">
+                    <div class="relative w-12 h-12 md:w-14 md:h-14 mb-5">
+                        <div class="absolute inset-0 border-[3px] border-gray-200 rounded-full"></div>
+                        <div class="absolute inset-0 border-[3px] border-[#C9A646] rounded-full border-t-transparent animate-spin"></div>
+                    </div>
+                    <p class="text-[#555555] font-medium text-[13px] md:text-[15px] animate-pulse text-center px-4 tracking-wide">
+                        Have Patience all our Properties are on their way coming to you...
+                    </p>
+                </div>
+            `;
+            
+            // Excluded 'trending-slider' from the loader injection
+            const targetGrids = ['dream-place-grid', 'modal-property-grid-trending', 'modal-property-grid-dream'];
+            targetGrids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = propLoaderHtml;
+            });
+
+            // Ensure trending slider is empty during load
+            const trendingSlider = document.getElementById('trending-slider');
+            if (trendingSlider) trendingSlider.innerHTML = '';
+
             try {
                 let rawData;
                 
@@ -1970,7 +1998,7 @@
                 if (typeof preloadedData !== 'undefined' && preloadedData.properties) {
                     rawData = await preloadedData.properties;
                 } else {
-                    rawData = await fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}`);
+                    rawData = await fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}&timestamp=${new Date().getTime()}`);
                 }
 
                 // Immediately process and render the live data
@@ -1979,8 +2007,11 @@
             } catch (error) {
                 console.error("Properties API Error:", error);
                 if (!allProperties.length) {
-                    document.getElementById('trending-slider').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
-                    document.getElementById('dream-place-grid').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
+                    const errorHtml = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
+                    targetGrids.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.innerHTML = errorHtml;
+                    });
                 }
             }
         }
