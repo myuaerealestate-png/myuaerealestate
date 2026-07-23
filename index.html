@@ -1937,10 +1937,6 @@
         }
 
         // --- FETCH PROPERTIES ---
-        const CACHE_KEY_PROPERTIES = 'myuae_properties_cache';
-        const CACHE_KEY_TIME = 'myuae_properties_cache_time';
-        const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes cache expiration
-
         // Helper function to process raw data and render the DOM
         function processAndRenderProperties(rawData) {
             let data = Array.isArray(rawData) ? rawData : (rawData.data || rawData.properties || []);
@@ -1967,61 +1963,21 @@
 
         async function fetchAndRenderProperties() {
             try {
-                const cachedDataString = localStorage.getItem(CACHE_KEY_PROPERTIES);
-                const cacheTimestamp = localStorage.getItem(CACHE_KEY_TIME);
-                const now = Date.now();
-                let hasRenderedFromCache = false;
-
-                // 1. Returning Visitors: Instantly load and render from localStorage cache
-                if (cachedDataString) {
-                    try {
-                        const cachedData = JSON.parse(cachedDataString);
-                        processAndRenderProperties(cachedData);
-                        hasRenderedFromCache = true;
-                    } catch(e) {
-                        console.error('Cache parsing error:', e);
-                        localStorage.removeItem(CACHE_KEY_PROPERTIES);
-                        localStorage.removeItem(CACHE_KEY_TIME);
-                    }
+                let rawData;
+                
+                // Fetch directly from the Google Apps Script Web App (Live Data - NO CACHE)
+                // Uses the preloaded network request for speed, or initiates a fresh one
+                if (typeof preloadedData !== 'undefined' && preloadedData.properties) {
+                    rawData = await preloadedData.properties;
+                } else {
+                    rawData = await fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}`);
                 }
 
-                // 2. Check if Cache has expired (older than 5 minutes) or doesn't exist
-                const isCacheExpired = !cacheTimestamp || (now - parseInt(cacheTimestamp, 10) > CACHE_EXPIRY_MS);
-
-                if (!hasRenderedFromCache || isCacheExpired) {
-                    // Background Refresh Logic
-                    const fetchPromise = (async () => {
-                        let rawData;
-                        // Use pre-fetched data on initial load if available, otherwise fetch fresh
-                        if (!hasRenderedFromCache && typeof preloadedData !== 'undefined' && preloadedData.properties) {
-                            rawData = await preloadedData.properties;
-                        } else {
-                            rawData = await fetchWithRetry(`${API_URLS.PROPERTIES}?apiKey=${API_KEYS.PROPERTIES}`);
-                        }
-
-                        const newRawDataString = JSON.stringify(rawData);
-
-                        // 3. Update DOM only if there are changes to avoid unnecessary reflows/repaints
-                        if (!hasRenderedFromCache || newRawDataString !== cachedDataString) {
-                            processAndRenderProperties(rawData);
-                            
-                            // Save the latest JSON and current timestamp to localStorage
-                            localStorage.setItem(CACHE_KEY_PROPERTIES, newRawDataString);
-                            localStorage.setItem(CACHE_KEY_TIME, Date.now().toString());
-                        }
-                    })();
-
-                    // First Visit: Await the fetch so the UI loader clears properly
-                    if (!hasRenderedFromCache) {
-                        await fetchPromise;
-                    } else {
-                        // Returning Visit: Catch silent background fetch errors
-                        fetchPromise.catch(e => console.error("Background property refresh failed:", e));
-                    }
-                }
+                // Immediately process and render the live data
+                processAndRenderProperties(rawData);
+                
             } catch (error) {
                 console.error("Properties API Error:", error);
-                // Only show error message if we failed to render even from cache
                 if (!allProperties.length) {
                     document.getElementById('trending-slider').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
                     document.getElementById('dream-place-grid').innerHTML = `<div class="w-full text-center py-10 text-gray-500 font-medium col-span-full">Properties currently unavailable.</div>`;
